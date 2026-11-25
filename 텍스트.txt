@@ -1,0 +1,1849 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>말랑이 사진 늘리기 - Squishy Photo Stretch</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Jua & Noto Sans KR -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <!-- Tone.js for synthesized squishy sound effects -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      min-height: 100dvh;
+      margin: 0;
+      padding: 0;
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #fff5f7;
+      background-image: radial-gradient(#ffd6e0 1.5px, transparent 1.5px);
+      background-size: 20px 20px;
+      overscroll-behavior: none;
+      overscroll-behavior-y: contain;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    .font-cute {
+      font-family: 'Jua', sans-serif;
+    }
+    /* 모바일 보안 제스처 차단을 피하기 위한 접근 가능한 투명 파일 인풋 */
+    .mobile-safe-file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+      opacity: 0.001;
+    }
+    /* Custom Range Slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 8px;
+      border-radius: 999px;
+      background: #fce7f3;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #ec4899;
+      border: 3px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(236, 72, 153, 0.45);
+      margin-top: -7px;
+      transition: transform 0.1s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:active {
+      transform: scale(1.18);
+    }
+    .canvas-container {
+      touch-action: none;
+    }
+    .pb-safe {
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    }
+    @keyframes floatBounce {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-3px); }
+    }
+    .animate-float {
+      animation: floatBounce 2.4s ease-in-out infinite;
+    }
+    @keyframes recPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+    .animate-rec {
+      animation: recPulse 1s ease-in-out infinite;
+    }
+    @keyframes spinSlow {
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin-fast {
+      animation: spinSlow 0.8s linear infinite;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center text-slate-800 overflow-x-hidden">
+
+  <!--
+    모바일 호환성을 위해 display:none 대신 .mobile-safe-file-input 클래스를 사용하고
+    <label for="..."> 요소로 직접 트리거하여 iOS Safari / 갤럭시 인앱 브라우저에서도 100% 동작하도록 구성
+  -->
+  <!-- 1) 갤러리/파일 선택용 인풋 (capture 속성 없음 -> 앨범/파일 선택기 즉시 오픈) -->
+  <input
+    type="file"
+    id="galleryFileInput"
+    accept="image/*,.heic,.heif,.webp,.jpg,.jpeg,.png"
+    class="mobile-safe-file-input"
+  />
+  <!-- 2) 카메라 직접 촬영용 인풋 -->
+  <input
+    type="file"
+    id="cameraFileInput"
+    accept="image/*"
+    capture="environment"
+    class="mobile-safe-file-input"
+  />
+
+  <!-- Main App Shell (100dvh 대응으로 모바일 브라우저 주소창 표시 시에도 버튼 잘림 방지) -->
+  <div class="w-full max-w-md min-h-[100dvh] sm:min-h-0 sm:my-3 bg-white/95 backdrop-blur-md sm:rounded-[2.2rem] shadow-2xl border border-pink-100 flex flex-col justify-between overflow-hidden">
+    
+    <!-- Top Section: Header + Step Nav + Guidance -->
+    <div>
+      <!-- Top Header with Direct Label-Linked Upload CTA -->
+      <header class="px-4 pt-3 pb-2 flex items-center justify-between bg-gradient-to-r from-pink-50 via-rose-50 to-amber-50 border-b border-pink-100">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl animate-float">🍡</span>
+          <div>
+            <h1 class="font-cute text-lg sm:text-xl text-pink-600 tracking-wide leading-none">말랑이 사진 늘리기</h1>
+            <p class="text-[10px] text-pink-400 font-medium mt-0.5">내 사진 넣고 볼살 쭉~ 당기기</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <!-- Label 직접 연결로 모바일 제스처 보안 정책 완벽 통과 -->
+          <label
+            for="galleryFileInput"
+            role="button"
+            tabindex="0"
+            class="cursor-pointer flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-sm hover:opacity-95 active:scale-95 transition"
+          >
+            <span>🖼️</span>
+            <span>갤러리</span>
+          </label>
+          <button id="soundToggleBtn" type="button" title="효과음 켜기/끄기" class="p-1.5 rounded-full bg-white text-pink-500 shadow-xs border border-pink-100 hover:bg-pink-50 active:scale-95 transition">
+            <span id="soundIcon" class="text-sm">🔇</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- 3-Step Navigation Bar -->
+      <nav class="px-3.5 py-2 bg-white border-b border-slate-100">
+        <div class="grid grid-cols-3 gap-1.5 bg-slate-100/90 p-1 rounded-2xl">
+          <button type="button" data-step="1" class="step-tab flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 bg-pink-500 text-white shadow-sm">
+            <span class="w-4 h-4 rounded-full bg-white text-pink-500 text-[11px] flex items-center justify-center font-black">1</span>
+            <span>넣기</span>
+          </button>
+          <button type="button" data-step="2" class="step-tab flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 text-slate-500 hover:text-pink-500">
+            <span class="w-4 h-4 rounded-full bg-white text-pink-500 text-[11px] flex items-center justify-center font-black">2</span>
+            <span>칠하기</span>
+          </button>
+          <button type="button" data-step="3" class="step-tab flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 text-slate-500 hover:text-pink-500">
+            <span class="w-4 h-4 rounded-full bg-white text-pink-500 text-[11px] flex items-center justify-center font-black">3</span>
+            <span>놀기</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Contextual Guidance Banner -->
+      <div id="instructionBanner" class="px-3 py-1.5 bg-pink-50/80 text-center text-[11px] sm:text-xs font-medium text-pink-700 flex items-center justify-center gap-1.5 border-b border-pink-100/60">
+        <span id="instructionIcon">📸</span>
+        <span id="instructionText">갤러리에서 사진을 고르거나 카메라로 찍어보세요!</span>
+      </div>
+      <!-- GitHub Pages / HTTPS & Deployment Status Bar -->
+      <div class="px-3 py-1 bg-slate-50/90 border-b border-pink-100/70 flex items-center justify-between text-[10px] text-slate-500">
+        <span id="envBadge" class="font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+          🌐 GitHub Pages 정적 웹 준비 완료
+        </span>
+        <span class="truncate ml-2">사진·마스크는 기기 내에서만 처리됩니다</span>
+      </div>
+    </div>
+
+    <!-- Interactive Canvas Stage -->
+    <main class="relative flex-1 flex flex-col items-center justify-center px-3.5 py-2.5 bg-gradient-to-b from-white to-pink-50/40">
+      <div id="stageWrapper" class="canvas-container relative w-full aspect-square max-w-[330px] sm:max-w-[350px] rounded-3xl overflow-hidden shadow-inner border-4 border-pink-100 bg-slate-100 flex items-center justify-center transition-all">
+        <!-- Main Interactive Canvas (48x48 Mesh) -->
+        <canvas id="mainCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+        <!-- High-Res Photo Processing Spinner Overlay -->
+        <div id="loadingOverlay" class="hidden absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center text-pink-600 p-5 text-center z-40">
+          <div class="w-10 h-10 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin-fast mb-2.5"></div>
+          <p class="font-cute text-base">사진을 말랑하게 준비하는 중...</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">고화질 사진도 자동으로 최적화해요</p>
+        </div>
+
+        <!-- Drag & Drop Overlay (PC) -->
+        <div id="dropOverlay" class="pointer-events-none hidden absolute inset-0 bg-pink-500/85 backdrop-blur-xs flex flex-col items-center justify-center text-white p-6 text-center z-40 border-4 border-dashed border-white rounded-2xl">
+          <span class="text-4xl mb-2">📥</span>
+          <p class="font-cute text-xl">여기에 사진을 놓아주세요!</p>
+          <p class="text-xs opacity-90 mt-1">바로 말랑하게 만들 수 있어요</p>
+        </div>
+
+        <!-- Custom Brush Cursor Indicator (Step 2) -->
+        <div id="brushCursor" class="pointer-events-none hidden fixed rounded-full border-2 border-pink-500 bg-pink-400/25 -translate-x-1/2 -translate-y-1/2 z-30"></div>
+
+        <!-- Step 1 Floating Quick Photo Buttons (Gallery + Camera directly linked via <label>) -->
+        <div id="canvasUploadOverlayGroup" class="absolute bottom-2.5 inset-x-2.5 flex items-center justify-center gap-2">
+          <label
+            for="galleryFileInput"
+            role="button"
+            tabindex="0"
+            class="cursor-pointer flex-1 max-w-[165px] py-2 px-3 rounded-full bg-white/95 backdrop-blur-sm text-pink-600 text-xs font-extrabold shadow-lg border border-pink-200 hover:bg-pink-50 active:scale-95 transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+          >
+            <span>🖼️</span>
+            <span>앨범에서 선택</span>
+          </label>
+          <label
+            for="cameraFileInput"
+            role="button"
+            tabindex="0"
+            class="cursor-pointer py-2 px-3.5 rounded-full bg-pink-500/95 backdrop-blur-sm text-white text-xs font-extrabold shadow-lg border border-pink-400 hover:bg-pink-600 active:scale-95 transition flex items-center justify-center gap-1 whitespace-nowrap"
+          >
+            <span>📷</span>
+            <span>촬영</span>
+          </label>
+        </div>
+
+        <!-- Step 3 Top Floating Action Pills: Compare Original & Reset -->
+        <div id="step3FloatingActions" class="hidden absolute top-2.5 inset-x-2.5 flex items-center justify-between pointer-events-none">
+          <button type="button" id="compareOriginalBtn" class="pointer-events-auto px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[11px] font-bold shadow-sm active:bg-pink-600 transition flex items-center gap-1">
+            <span>👁️ 꾹 눌러 원본</span>
+          </button>
+          <button type="button" id="quickResetBtn" class="pointer-events-auto px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-xs text-slate-700 text-[11px] font-bold shadow-sm border border-slate-200 hover:bg-white active:scale-95 transition flex items-center gap-1">
+            <span>↺ 초기화</span>
+          </button>
+        </div>
+
+        <!-- Recording Indicator Badge -->
+        <div id="recordingBadge" class="hidden absolute top-12 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-rose-600 text-white text-[11px] font-bold shadow-md flex items-center gap-1.5 z-30">
+          <span class="w-2 h-2 rounded-full bg-white animate-rec"></span>
+          <span id="recordingTimer">녹화 중 00:00</span>
+        </div>
+
+        <!-- Step 3 Hint Pill -->
+        <div id="canvasHintPill" class="hidden pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-black/65 backdrop-blur-xs text-white text-[11px] font-medium whitespace-nowrap transition-opacity duration-300">
+          분홍색으로 칠한 곳을 잡고 쭉~ 늘려보세요!
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Controls Area (Dynamic by Step) -->
+    <section class="px-4 pt-2.5 pb-safe bg-white border-t border-pink-100">
+      
+      <!-- ==========================================
+           STEP 1 CONTROLS: Mobile Gallery/Camera, Pinch/Pan Crop & Samples
+           ========================================== -->
+      <div id="controlsStep1" class="space-y-2.5">
+        <!-- Mobile Touch-Friendly Gallery & Camera Action Grid -->
+        <div class="grid grid-cols-5 gap-2">
+          <!-- Gallery Picker Label (3/5 width) -->
+          <label
+            for="galleryFileInput"
+            role="button"
+            tabindex="0"
+            class="col-span-3 cursor-pointer py-2.5 px-3 rounded-2xl border-2 border-dashed border-pink-300 bg-pink-50/80 hover:bg-pink-100/80 active:scale-[0.98] transition flex items-center gap-2.5"
+          >
+            <div class="w-9 h-9 rounded-xl bg-pink-500 text-white flex items-center justify-center text-lg shrink-0 shadow-xs">
+              🖼️
+            </div>
+            <div class="text-left min-w-0">
+              <div class="text-xs sm:text-sm font-black text-pink-700 truncate">갤러리에서 넣기</div>
+              <div class="text-[10px] text-pink-500 truncate">강아지·고양이·셀카</div>
+            </div>
+          </label>
+
+          <!-- Camera Direct Capture Label (2/5 width) -->
+          <label
+            for="cameraFileInput"
+            role="button"
+            tabindex="0"
+            class="col-span-2 cursor-pointer py-2.5 px-2.5 rounded-2xl border-2 border-rose-200 bg-rose-50/70 hover:bg-rose-100/70 active:scale-[0.98] transition flex items-center gap-2"
+          >
+            <div class="w-9 h-9 rounded-xl bg-rose-500 text-white flex items-center justify-center text-lg shrink-0 shadow-xs">
+              📷
+            </div>
+            <div class="text-left min-w-0">
+              <div class="text-xs sm:text-sm font-black text-rose-700 truncate">카메라</div>
+              <div class="text-[10px] text-rose-500 truncate">바로 찍기</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Image Framing Controls (Active when user uploads a custom photo) -->
+        <div id="photoAdjustBox" class="hidden bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-600">📐 드래그 이동 · 두 손가락 핀치 확대</span>
+            <button type="button" id="resetCropBtn" class="text-[11px] font-bold text-pink-500 hover:underline">위치 초기화</button>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="text-[11px] font-bold text-slate-500">확대</span>
+            <input type="range" id="photoZoomSlider" min="0.6" max="2.8" step="0.02" value="1" class="w-full" />
+            <span id="photoZoomValue" class="text-[11px] font-bold text-pink-600 w-10 text-right">100%</span>
+          </div>
+        </div>
+
+        <!-- Sample Characters Quick Select -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] font-bold text-slate-500">기본 샘플로 바로 체험하기 (Ctrl+V 붙여넣기도 가능)</span>
+            <button type="button" id="instantPlayAllBtn" class="text-[11px] font-bold text-pink-600 hover:underline">전체 영역 바로 놀기 ⚡</button>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button type="button" data-sample="maltese" class="sample-btn rounded-xl p-1.5 border-2 border-pink-400 bg-pink-50/60 flex items-center gap-1.5 transition active:scale-95">
+              <span class="text-lg bg-white w-7 h-7 rounded-lg flex items-center justify-center shadow-2xs shrink-0">🐶</span>
+              <span class="text-[11px] font-bold text-slate-700 truncate">말티즈</span>
+            </button>
+            <button type="button" data-sample="shiba" class="sample-btn rounded-xl p-1.5 border-2 border-slate-100 hover:border-pink-200 bg-slate-50 flex items-center gap-1.5 transition active:scale-95">
+              <span class="text-lg bg-white w-7 h-7 rounded-lg flex items-center justify-center shadow-2xs shrink-0">🐕</span>
+              <span class="text-[11px] font-bold text-slate-700 truncate">시바견</span>
+            </button>
+            <button type="button" data-sample="cat" class="sample-btn rounded-xl p-1.5 border-2 border-slate-100 hover:border-pink-200 bg-slate-50 flex items-center gap-1.5 transition active:scale-95">
+              <span class="text-lg bg-white w-7 h-7 rounded-lg flex items-center justify-center shadow-2xs shrink-0">🐱</span>
+              <span class="text-[11px] font-bold text-slate-700 truncate">치즈냥</span>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" onclick="goToStep(2)" class="w-full py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-sm shadow-md hover:opacity-95 active:scale-[0.99] transition">
+          다음: 말랑하게 늘릴 부위 칠하기 →
+        </button>
+      </div>
+
+      <!-- ==========================================
+           STEP 2 CONTROLS: Masking Brush, Undo & Clear
+           ========================================== -->
+      <div id="controlsStep2" class="hidden space-y-2.5">
+        <!-- Tool Buttons Row -->
+        <div class="flex items-center justify-between gap-1">
+          <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            <button type="button" id="brushToolBtn" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500 text-white text-xs font-bold shadow-2xs transition">
+              <span>🖌️ 브러시</span>
+            </button>
+            <button type="button" id="eraserToolBtn" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 text-xs font-bold hover:bg-white/60 transition">
+              <span>🧼 지우개</span>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1">
+            <button type="button" id="undoMaskBtn" title="실행 취소" class="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 active:scale-95 transition">
+              ↩ 취소
+            </button>
+            <button type="button" id="fillAllMaskBtn" class="px-2.5 py-1.5 rounded-xl bg-pink-50 text-pink-600 border border-pink-200 text-xs font-bold hover:bg-pink-100 active:scale-95 transition">
+              전체칠
+            </button>
+            <button type="button" id="clearMaskBtn" class="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 active:scale-95 transition">
+              초기화
+            </button>
+          </div>
+        </div>
+
+        <!-- Brush Size Slider -->
+        <div class="flex items-center gap-3 bg-pink-50/60 px-3.5 py-2 rounded-2xl border border-pink-100">
+          <span class="text-xs font-bold text-slate-600 whitespace-nowrap">브러시 굵기</span>
+          <input type="range" id="brushSizeSlider" min="12" max="90" value="44" class="w-full" />
+          <span id="brushSizeValue" class="text-xs font-bold text-pink-600 w-7 text-right">44</span>
+        </div>
+
+        <button type="button" onclick="goToStep(3)" class="w-full py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-sm shadow-md hover:opacity-95 active:scale-[0.99] transition">
+          칠하기 완료! 말랑하게 놀러 가기 🎉
+        </button>
+      </div>
+
+      <!-- ==========================================
+           STEP 3 CONTROLS: Physics, Save/Share PNG & Video
+           ========================================== -->
+      <div id="controlsStep3" class="hidden space-y-2.5">
+        <!-- Physics Mode Toggle -->
+        <div class="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-2xl">
+          <button type="button" id="modeElasticBtn" class="py-1.5 px-2 rounded-xl bg-white text-pink-600 font-bold text-xs shadow-2xs transition flex items-center justify-center gap-1">
+            <span>🍮 말랑 탄성 (출렁복귀)</span>
+          </button>
+          <button type="button" id="modeHoldBtn" class="py-1.5 px-2 rounded-xl text-slate-500 font-bold text-xs hover:text-slate-700 transition flex items-center justify-center gap-1">
+            <span>🫠 모양 고정 (늘린채유지)</span>
+          </button>
+        </div>
+
+        <!-- Sliders: Radius & Softness/Bounce -->
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-pink-50/60 px-3 py-1.5 rounded-xl border border-pink-100">
+            <div class="flex justify-between text-[11px] font-bold mb-1">
+              <span class="text-slate-600">당기는 범위</span>
+              <span id="squishRadiusValue" class="text-pink-600">105</span>
+            </div>
+            <input type="range" id="squishRadiusSlider" min="45" max="170" value="105" class="w-full" />
+          </div>
+          <div class="bg-pink-50/60 px-3 py-1.5 rounded-xl border border-pink-100">
+            <div class="flex justify-between text-[11px] font-bold mb-1">
+              <span class="text-slate-600">출렁 탄성</span>
+              <span id="elasticityValue" class="text-pink-600">보통</span>
+            </div>
+            <input type="range" id="elasticitySlider" min="1" max="3" step="1" value="2" class="w-full" />
+          </div>
+        </div>
+
+        <!-- Action Buttons: Edit Mask, Save/Share PNG, Record Short Video -->
+        <div class="grid grid-cols-3 gap-1.5 pt-0.5">
+          <button type="button" onclick="goToStep(2)" class="py-2.5 px-2 rounded-xl bg-pink-50 text-pink-600 font-bold text-xs border border-pink-200 hover:bg-pink-100 active:scale-95 transition flex items-center justify-center gap-1">
+            <span>🖌️ 칠하기 수정</span>
+          </button>
+          <button type="button" id="saveImageBtn" class="py-2.5 px-2 rounded-xl bg-slate-800 text-white font-bold text-xs hover:bg-slate-700 active:scale-95 transition flex items-center justify-center gap-1 shadow-xs">
+            <span>📸 사진 저장</span>
+          </button>
+          <button type="button" id="recordVideoBtn" class="py-2.5 px-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold text-xs hover:opacity-95 active:scale-95 transition flex items-center justify-center gap-1 shadow-xs">
+            <span id="recordBtnIcon">🎥</span>
+            <span id="recordBtnText">움짤 녹화</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- Mobile Save Preview Modal (iOS Safari / In-App WebView Fallback where <a download> is blocked) -->
+  <div id="mobileSaveModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xs w-full p-4 text-center shadow-2xl space-y-3 border border-pink-100">
+      <div class="flex items-center justify-between">
+        <span class="font-cute text-base text-pink-600">📸 완성된 말랑이 사진</span>
+        <button type="button" id="closeSaveModalBtn" class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center">✕</button>
+      </div>
+      <img id="savedPreviewImg" alt="말랑이 완성 사진" class="w-full aspect-square object-cover rounded-2xl border-2 border-pink-100 shadow-inner" />
+      <p class="text-xs text-slate-600 font-medium leading-relaxed">
+        모바일에서는 위 이미지를 <strong class="text-pink-600">꾹 눌러 '사진 앱에 저장'</strong>하거나 아래 버튼으로 공유할 수 있어요!
+      </p>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" id="nativeShareBtn" class="py-2.5 px-3 rounded-xl bg-pink-500 text-white text-xs font-bold shadow-xs active:scale-95 transition">
+          📤 공유 / 저장
+        </button>
+        <button type="button" id="closeSaveModalFooterBtn" class="py-2.5 px-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold active:scale-95 transition">
+          닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toastMsg" class="fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-full bg-slate-900/90 text-white text-xs font-bold shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50 whitespace-nowrap">
+    알림 메시지
+  </div>
+
+  <script>
+    /**
+     * 말랑이 사진 늘리기 (Squishy Photo Stretch) - Mobile & In-App Browser Optimized
+     * - Mobile-Safe <label for="..."> File Inputs (Gallery & Camera)
+     * - High-Res Smartphone Photo Safe Decoder & Downsampler (createImageBitmap + FileReader fallback)
+     * - Two-Finger Pinch Zoom & Single-Finger Pan Framing in Step 1
+     * - 48x48 2D Affine Textured Mesh + Spring-Mass Physics Engine
+     * - Mobile Web Share API + Long-Press Image Save Fallback Modal
+     */
+
+    // ==========================================
+    // 1. CONFIGURATION & STATE
+    // ==========================================
+    const GRID_COLS = 48;
+    const GRID_ROWS = 48;
+    const CANVAS_RES = 560; // Crisp & fast on mobile GPUs/CPUs
+
+    const state = {
+      step: 1,
+      sourceMode: 'sample', // 'sample' | 'custom'
+      currentSample: 'maltese',
+      uploadedImg: null, // ImageBitmap or HTMLImageElement
+      imgZoom: 1,
+      imgOffsetX: 0,
+      imgOffsetY: 0,
+      brushTool: 'brush',
+      brushSize: 44,
+      physicsMode: 'elastic',
+      squishRadius: 105,
+      elasticityLevel: 2,
+      soundEnabled: false,
+      isComparingOriginal: false,
+      isPointerDown: false,
+      pointerPos: { x: 0, y: 0 },
+      dragStartPos: { x: 0, y: 0 },
+      lastPointerPos: { x: 0, y: 0 },
+      pinchStartDist: 0,
+      pinchStartZoom: 1,
+      hasInteractedInStep3: false,
+      isRecording: false
+    };
+
+    // DOM References
+    const mainCanvas = document.getElementById('mainCanvas');
+    const ctx = mainCanvas.getContext('2d');
+    const brushCursor = document.getElementById('brushCursor');
+    const canvasHintPill = document.getElementById('canvasHintPill');
+    const galleryFileInput = document.getElementById('galleryFileInput');
+    const cameraFileInput = document.getElementById('cameraFileInput');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    // Offscreen Canvases
+    const photoCanvas = document.createElement('canvas');
+    photoCanvas.width = CANVAS_RES;
+    photoCanvas.height = CANVAS_RES;
+    const photoCtx = photoCanvas.getContext('2d');
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = CANVAS_RES;
+    maskCanvas.height = CANVAS_RES;
+    const maskCtx = maskCanvas.getContext('2d');
+
+    const featheredMaskCanvas = document.createElement('canvas');
+    featheredMaskCanvas.width = CANVAS_RES;
+    featheredMaskCanvas.height = CANVAS_RES;
+    const featheredCtx = featheredMaskCanvas.getContext('2d');
+
+    const pinkOverlayCanvas = document.createElement('canvas');
+    pinkOverlayCanvas.width = CANVAS_RES;
+    pinkOverlayCanvas.height = CANVAS_RES;
+    const pinkOverlayCtx = pinkOverlayCanvas.getContext('2d');
+
+    // Undo History Stack
+    const maskUndoStack = [];
+    const MAX_UNDO_STEPS = 12;
+
+    // 48x48 Mesh Vertices
+    let vertices = [];
+
+    // ==========================================
+    // 2. SOUND SYNTHESIZER (Tone.js)
+    // ==========================================
+    let squishSynth = null;
+    function initAudio() {
+      if (!squishSynth && window.Tone) {
+        squishSynth = new Tone.MembraneSynth({
+          pitchDecay: 0.08,
+          octaves: 3,
+          oscillator: { type: 'sine' },
+          envelope: { attack: 0.01, decay: 0.25, sustain: 0.01, release: 0.3 }
+        }).toDestination();
+        squishSynth.volume.value = -10;
+      }
+    }
+
+    function playBoingSound(pitch = 'C4') {
+      if (!state.soundEnabled) return;
+      try {
+        initAudio();
+        if (Tone.context.state !== 'running') Tone.start();
+        squishSynth.triggerAttackRelease(pitch, '8n');
+      } catch (e) {}
+    }
+
+    // ==========================================
+    // 3. MOBILE-SAFE PHOTO DECODER & RESIZER
+    // ==========================================
+    /**
+     * 스마트폰 고화질 사진(12MP~50MP, EXIF 회전 포함)을 메모리 초과 없이 안전하게 디코딩하고
+     * 1024x1024 이하의 작업용 캔버스 이미지로 리사이징합니다.
+     */
+    async function decodeAndDownsampleImage(file) {
+      const MAX_DIM = 1024;
+
+      // 1차 시도: createImageBitmap (EXIF 회전 자동 보정 및 고성능 네이티브 디코딩 지원)
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bitmap = await createImageBitmap(file);
+          const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+          const targetW = Math.max(1, Math.round(bitmap.width * scale));
+          const targetH = Math.max(1, Math.round(bitmap.height * scale));
+
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = targetW;
+          tempCanvas.height = targetH;
+          const tCtx = tempCanvas.getContext('2d');
+          tCtx.drawImage(bitmap, 0, 0, targetW, targetH);
+          if (typeof bitmap.close === 'function') bitmap.close();
+          return tempCanvas;
+        } catch (err) {
+          // 일부 모바일 웹뷰에서 HEIC 등으로 createImageBitmap 실패 시 FileReader로 폴백
+        }
+      }
+
+      // 2차 폴백: FileReader + HTMLImageElement
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('지원하지 않는 이미지 형식입니다.'));
+          img.onload = () => {
+            const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+            const targetW = Math.max(1, Math.round(img.width * scale));
+            const targetH = Math.max(1, Math.round(img.height * scale));
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = targetW;
+            tempCanvas.height = targetH;
+            const tCtx = tempCanvas.getContext('2d');
+            tCtx.drawImage(img, 0, 0, targetW, targetH);
+            resolve(tempCanvas);
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function loadImageFile(file) {
+      if (!file) return;
+      // 모바일 브라우저에서 간혹 type이 빈 문자열로 넘어오는 경우 확장자로 보완 확인
+      const isImageMime = file.type && file.type.startsWith('image/');
+      const isImageExt = /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(file.name || '');
+
+      if (!isImageMime && !isImageExt) {
+        showToast('사진 파일(JPG, PNG, HEIC 등)만 선택할 수 있어요!');
+        return;
+      }
+
+      loadingOverlay.classList.remove('hidden');
+
+      try {
+        const processedSource = await decodeAndDownsampleImage(file);
+
+        state.sourceMode = 'custom';
+        state.uploadedImg = processedSource;
+        state.imgZoom = 1;
+        state.imgOffsetX = 0;
+        state.imgOffsetY = 0;
+
+        // Update UI controls for framing
+        document.getElementById('photoZoomSlider').value = '1';
+        document.getElementById('photoZoomValue').textContent = '100%';
+        document.getElementById('photoAdjustBox').classList.remove('hidden');
+
+        // Deselect sample buttons
+        document.querySelectorAll('.sample-btn').forEach((b) => {
+          b.classList.remove('border-pink-400', 'bg-pink-50/60');
+          b.classList.add('border-slate-100', 'bg-slate-50');
+        });
+
+        renderCustomPhotoToBuffer();
+        maskCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+        maskUndoStack.length = 0;
+        updateMaskWeights();
+        resetMeshDeformation(true);
+
+        goToStep(1);
+        showToast('사진 불러오기 완료! 위치 조절 후 칠해보세요.');
+      } catch (error) {
+        console.error(error);
+        showToast('사진을 불러오지 못했어요. 다른 사진으로 다시 시도해 주세요!');
+      } finally {
+        loadingOverlay.classList.add('hidden');
+      }
+    }
+
+    // Renders uploaded user photo into square photoCanvas with zoom & pan offsets
+    function renderCustomPhotoToBuffer() {
+      if (!state.uploadedImg) return;
+      const img = state.uploadedImg;
+      photoCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+
+      // Soft blurred background fill in case user zooms out below 100%
+      photoCtx.save();
+      photoCtx.filter = 'blur(18px) brightness(0.92)';
+      photoCtx.drawImage(img, -20, -20, CANVAS_RES + 40, CANVAS_RES + 40);
+      photoCtx.restore();
+
+      // Calculate base cover scale
+      const baseScale = Math.max(CANVAS_RES / img.width, CANVAS_RES / img.height);
+      const finalScale = baseScale * state.imgZoom;
+      const drawW = img.width * finalScale;
+      const drawH = img.height * finalScale;
+
+      const drawX = (CANVAS_RES - drawW) / 2 + state.imgOffsetX;
+      const drawY = (CANVAS_RES - drawH) / 2 + state.imgOffsetY;
+
+      photoCtx.drawImage(img, drawX, drawY, drawW, drawH);
+    }
+
+    // High-resolution vector sample portraits
+    function drawSampleCharacter(type) {
+      const w = CANVAS_RES;
+      const h = CANVAS_RES;
+      const s = CANVAS_RES / 520; // Scale factor relative to 520px design
+      photoCtx.save();
+      photoCtx.clearRect(0, 0, w, h);
+      photoCtx.scale(s, s);
+
+      if (type === 'maltese') {
+        const bgGrad = photoCtx.createLinearGradient(0, 0, 0, 520);
+        bgGrad.addColorStop(0, '#e2dcd5');
+        bgGrad.addColorStop(1, '#cfc5ba');
+        photoCtx.fillStyle = bgGrad;
+        photoCtx.fillRect(0, 0, 520, 520);
+
+        photoCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+        photoCtx.lineWidth = 2;
+        for (let i = 0; i < 520; i += 18) {
+          photoCtx.beginPath();
+          photoCtx.moveTo(i, 0);
+          photoCtx.lineTo(i, 520);
+          photoCtx.stroke();
+        }
+
+        // Ears
+        photoCtx.fillStyle = '#f5f2ed';
+        photoCtx.beginPath();
+        photoCtx.ellipse(140, 245, 60, 98, 0.25, 0, Math.PI * 2);
+        photoCtx.ellipse(380, 245, 60, 98, -0.25, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        // Head
+        const headGrad = photoCtx.createRadialGradient(260, 240, 30, 260, 260, 182);
+        headGrad.addColorStop(0, '#ffffff');
+        headGrad.addColorStop(0.75, '#fbf9f5');
+        headGrad.addColorStop(1, '#eae3d9');
+        photoCtx.fillStyle = headGrad;
+        photoCtx.beginPath();
+        photoCtx.arc(260, 265, 158, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        // Chubby Cheeks
+        photoCtx.fillStyle = '#ffffff';
+        photoCtx.beginPath();
+        photoCtx.arc(185, 296, 70, 0, Math.PI * 2);
+        photoCtx.arc(335, 296, 70, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        // Blush
+        const blushL = photoCtx.createRadialGradient(175, 302, 5, 175, 302, 44);
+        blushL.addColorStop(0, 'rgba(255, 145, 175, 0.45)');
+        blushL.addColorStop(1, 'rgba(255, 145, 175, 0)');
+        photoCtx.fillStyle = blushL;
+        photoCtx.beginPath();
+        photoCtx.arc(175, 302, 44, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        const blushR = photoCtx.createRadialGradient(345, 302, 5, 345, 302, 44);
+        blushR.addColorStop(0, 'rgba(255, 145, 175, 0.45)');
+        blushR.addColorStop(1, 'rgba(255, 145, 175, 0)');
+        photoCtx.fillStyle = blushR;
+        photoCtx.beginPath();
+        photoCtx.arc(345, 302, 44, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        // Eyes
+        [203, 317].forEach((ex) => {
+          photoCtx.fillStyle = '#1e1b18';
+          photoCtx.beginPath();
+          photoCtx.arc(ex, 240, 22, 0, Math.PI * 2);
+          photoCtx.fill();
+          photoCtx.fillStyle = '#ffffff';
+          photoCtx.beginPath();
+          photoCtx.arc(ex - 6, 233, 7.5, 0, Math.PI * 2);
+          photoCtx.arc(ex + 6, 245, 3.2, 0, Math.PI * 2);
+          photoCtx.fill();
+        });
+
+        // Nose
+        photoCtx.fillStyle = '#262220';
+        photoCtx.beginPath();
+        photoCtx.ellipse(260, 286, 26, 19, 0, 0, Math.PI * 2);
+        photoCtx.fill();
+        photoCtx.fillStyle = 'rgba(255,255,255,0.45)';
+        photoCtx.beginPath();
+        photoCtx.ellipse(253, 280, 9, 4, -0.2, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        // Mouth & Tongue
+        photoCtx.strokeStyle = '#4a403a';
+        photoCtx.lineWidth = 4.5;
+        photoCtx.lineCap = 'round';
+        photoCtx.beginPath();
+        photoCtx.moveTo(260, 305);
+        photoCtx.lineTo(260, 320);
+        photoCtx.moveTo(237, 324);
+        photoCtx.quadraticCurveTo(250, 332, 260, 320);
+        photoCtx.quadraticCurveTo(270, 332, 283, 324);
+        photoCtx.stroke();
+
+        photoCtx.fillStyle = '#ff85a1';
+        photoCtx.beginPath();
+        photoCtx.arc(260, 331, 10.5, 0, Math.PI);
+        photoCtx.fill();
+
+      } else if (type === 'shiba') {
+        photoCtx.fillStyle = '#fef3c7';
+        photoCtx.fillRect(0, 0, 520, 520);
+
+        photoCtx.fillStyle = '#e08e45';
+        photoCtx.beginPath();
+        photoCtx.moveTo(120, 220); photoCtx.lineTo(145, 95); photoCtx.lineTo(222, 162);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.beginPath();
+        photoCtx.moveTo(400, 220); photoCtx.lineTo(375, 95); photoCtx.lineTo(298, 162);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.fillStyle = '#fde68a';
+        photoCtx.beginPath();
+        photoCtx.moveTo(138, 205); photoCtx.lineTo(152, 120); photoCtx.lineTo(205, 166);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.beginPath();
+        photoCtx.moveTo(382, 205); photoCtx.lineTo(368, 120); photoCtx.lineTo(315, 166);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.fillStyle = '#e59247';
+        photoCtx.beginPath();
+        photoCtx.ellipse(260, 270, 172, 154, 0, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        photoCtx.fillStyle = '#fffbeb';
+        photoCtx.beginPath();
+        photoCtx.ellipse(182, 306, 82, 68, -0.15, 0, Math.PI * 2);
+        photoCtx.ellipse(338, 306, 82, 68, 0.15, 0, Math.PI * 2);
+        photoCtx.ellipse(260, 316, 78, 65, 0, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        photoCtx.fillStyle = '#fffbeb';
+        photoCtx.beginPath();
+        photoCtx.ellipse(203, 206, 17, 10.5, -0.2, 0, Math.PI * 2);
+        photoCtx.ellipse(317, 206, 17, 10.5, 0.2, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        [203, 317].forEach((ex) => {
+          photoCtx.fillStyle = '#292524';
+          photoCtx.beginPath();
+          photoCtx.arc(ex, 245, 18, 0, Math.PI * 2);
+          photoCtx.fill();
+          photoCtx.fillStyle = '#ffffff';
+          photoCtx.beginPath();
+          photoCtx.arc(ex - 5, 239, 6, 0, Math.PI * 2);
+          photoCtx.fill();
+        });
+
+        photoCtx.fillStyle = 'rgba(251, 113, 133, 0.35)';
+        photoCtx.beginPath();
+        photoCtx.ellipse(162, 296, 34, 21, 0, 0, Math.PI * 2);
+        photoCtx.ellipse(358, 296, 34, 21, 0, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        photoCtx.fillStyle = '#292524';
+        photoCtx.beginPath();
+        photoCtx.ellipse(260, 286, 23, 16, 0, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        photoCtx.strokeStyle = '#44403c';
+        photoCtx.lineWidth = 5;
+        photoCtx.lineCap = 'round';
+        photoCtx.beginPath();
+        photoCtx.moveTo(260, 302);
+        photoCtx.lineTo(260, 320);
+        photoCtx.moveTo(230, 320);
+        photoCtx.quadraticCurveTo(245, 336, 260, 320);
+        photoCtx.quadraticCurveTo(275, 336, 290, 320);
+        photoCtx.stroke();
+
+      } else if (type === 'cat') {
+        photoCtx.fillStyle = '#f3e8ff';
+        photoCtx.fillRect(0, 0, 520, 520);
+
+        photoCtx.fillStyle = '#fcd34d';
+        photoCtx.beginPath();
+        photoCtx.moveTo(115, 228); photoCtx.lineTo(135, 98); photoCtx.lineTo(222, 166);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.beginPath();
+        photoCtx.moveTo(405, 228); photoCtx.lineTo(385, 98); photoCtx.lineTo(298, 166);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.fillStyle = '#f9a8d4';
+        photoCtx.beginPath();
+        photoCtx.moveTo(134, 212); photoCtx.lineTo(146, 125); photoCtx.lineTo(205, 172);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.beginPath();
+        photoCtx.moveTo(386, 212); photoCtx.lineTo(374, 125); photoCtx.lineTo(315, 172);
+        photoCtx.closePath(); photoCtx.fill();
+
+        photoCtx.fillStyle = '#fde68a';
+        photoCtx.beginPath();
+        photoCtx.ellipse(260, 275, 175, 150, 0, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        photoCtx.fillStyle = '#f59e0b';
+        photoCtx.beginPath();
+        photoCtx.roundRect(253, 135, 14, 40, 7);
+        photoCtx.roundRect(227, 144, 12, 32, 6);
+        photoCtx.roundRect(281, 144, 12, 32, 6);
+        photoCtx.fill();
+
+        photoCtx.fillStyle = '#fef9c3';
+        photoCtx.beginPath();
+        photoCtx.arc(220, 310, 48, 0, Math.PI * 2);
+        photoCtx.arc(300, 310, 48, 0, Math.PI * 2);
+        photoCtx.fill();
+
+        [195, 325].forEach((ex) => {
+          photoCtx.fillStyle = '#1f2937';
+          photoCtx.beginPath();
+          photoCtx.arc(ex, 248, 24, 0, Math.PI * 2);
+          photoCtx.fill();
+          photoCtx.fillStyle = '#ffffff';
+          photoCtx.beginPath();
+          photoCtx.arc(ex - 7, 239, 8.5, 0, Math.PI * 2);
+          photoCtx.arc(ex + 7, 254, 3.8, 0, Math.PI * 2);
+          photoCtx.fill();
+        });
+
+        photoCtx.fillStyle = '#f472b6';
+        photoCtx.beginPath();
+        photoCtx.moveTo(248, 285);
+        photoCtx.lineTo(272, 285);
+        photoCtx.lineTo(260, 299);
+        photoCtx.closePath();
+        photoCtx.fill();
+
+        photoCtx.strokeStyle = '#78350f';
+        photoCtx.lineWidth = 4.5;
+        photoCtx.lineCap = 'round';
+        photoCtx.beginPath();
+        photoCtx.moveTo(224, 314);
+        photoCtx.quadraticCurveTo(242, 332, 260, 308);
+        photoCtx.quadraticCurveTo(278, 332, 296, 314);
+        photoCtx.stroke();
+
+        photoCtx.strokeStyle = '#b45309';
+        photoCtx.lineWidth = 3;
+        photoCtx.beginPath();
+        photoCtx.moveTo(130, 282); photoCtx.lineTo(82, 274);
+        photoCtx.moveTo(130, 302); photoCtx.lineTo(82, 308);
+        photoCtx.moveTo(390, 282); photoCtx.lineTo(438, 274);
+        photoCtx.moveTo(390, 302); photoCtx.lineTo(438, 308);
+        photoCtx.stroke();
+      }
+      photoCtx.restore();
+    }
+
+    function applyDefaultCheekMask() {
+      const s = CANVAS_RES / 520;
+      maskCtx.save();
+      maskCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+      maskCtx.scale(s, s);
+      maskCtx.fillStyle = '#ffffff';
+      maskCtx.beginPath();
+      maskCtx.arc(182, 300, 65, 0, Math.PI * 2);
+      maskCtx.arc(338, 300, 65, 0, Math.PI * 2);
+      maskCtx.arc(260, 298, 55, 0, Math.PI * 2);
+      maskCtx.fill();
+      maskCtx.restore();
+      updateMaskWeights();
+    }
+
+    // ==========================================
+    // 4. 48x48 MESH & FEATHERED MASK WEIGHTS
+    // ==========================================
+    function initMesh() {
+      vertices = [];
+      for (let r = 0; r <= GRID_ROWS; r++) {
+        for (let c = 0; c <= GRID_COLS; c++) {
+          const x = (c / GRID_COLS) * CANVAS_RES;
+          const y = (r / GRID_ROWS) * CANVAS_RES;
+          vertices.push({
+            origX: x,
+            origY: y,
+            x: x,
+            y: y,
+            vx: 0,
+            vy: 0,
+            weight: 0,
+            grabStartX: x,
+            grabStartY: y,
+            grabInfluence: 0
+          });
+        }
+      }
+    }
+
+    function saveMaskSnapshotForUndo() {
+      if (maskUndoStack.length >= MAX_UNDO_STEPS) {
+        maskUndoStack.shift();
+      }
+      maskUndoStack.push(maskCtx.getImageData(0, 0, CANVAS_RES, CANVAS_RES));
+    }
+
+    function undoMaskStroke() {
+      if (maskUndoStack.length === 0) {
+        showToast('더 이상 되돌릴 내역이 없어요.');
+        return;
+      }
+      const prevData = maskUndoStack.pop();
+      maskCtx.putImageData(prevData, 0, 0);
+      updateMaskWeights();
+      showToast('방금 칠한 획을 되돌렸어요.');
+    }
+
+    function updateMaskWeights() {
+      featheredCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+      featheredCtx.save();
+      featheredCtx.filter = 'blur(20px)';
+      featheredCtx.drawImage(maskCanvas, 0, 0);
+      featheredCtx.restore();
+
+      pinkOverlayCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+      pinkOverlayCtx.drawImage(maskCanvas, 0, 0);
+      pinkOverlayCtx.globalCompositeOperation = 'source-in';
+      pinkOverlayCtx.fillStyle = 'rgba(244, 63, 142, 0.48)';
+      pinkOverlayCtx.fillRect(0, 0, CANVAS_RES, CANVAS_RES);
+      pinkOverlayCtx.globalCompositeOperation = 'source-over';
+
+      const imgData = featheredCtx.getImageData(0, 0, CANVAS_RES, CANVAS_RES).data;
+      for (let i = 0; i < vertices.length; i++) {
+        const v = vertices[i];
+        const px = Math.min(CANVAS_RES - 1, Math.max(0, Math.round(v.origX)));
+        const py = Math.min(CANVAS_RES - 1, Math.max(0, Math.round(v.origY)));
+        const alphaIdx = (py * CANVAS_RES + px) * 4 + 3;
+        const rawWeight = imgData[alphaIdx] / 255;
+        v.weight = rawWeight * rawWeight * (3 - 2 * rawWeight);
+      }
+    }
+
+    function resetMeshDeformation(instant = false) {
+      for (let i = 0; i < vertices.length; i++) {
+        const v = vertices[i];
+        if (instant) {
+          v.x = v.origX;
+          v.y = v.origY;
+          v.vx = 0;
+          v.vy = 0;
+        } else {
+          v.vx += (v.origX - v.x) * 0.28;
+          v.vy += (v.origY - v.y) * 0.28;
+        }
+        v.grabInfluence = 0;
+      }
+    }
+
+    // ==========================================
+    // 5. AFFINE TEXTURED TRIANGLE MESH RENDERER
+    // ==========================================
+    function drawTexturedTriangle(targetCtx, img, x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2) {
+      const cx = (x0 + x1 + x2) / 3;
+      const cy = (y0 + y1 + y2) / 3;
+      const expand = 0.4;
+
+      const ex0 = x0 + (x0 > cx ? expand : -expand);
+      const ey0 = y0 + (y0 > cy ? expand : -expand);
+      const ex1 = x1 + (x1 > cx ? expand : -expand);
+      const ey1 = y1 + (y1 > cy ? expand : -expand);
+      const ex2 = x2 + (x2 > cx ? expand : -expand);
+      const ey2 = y2 + (y2 > cy ? expand : -expand);
+
+      targetCtx.save();
+      targetCtx.beginPath();
+      targetCtx.moveTo(ex0, ey0);
+      targetCtx.lineTo(ex1, ey1);
+      targetCtx.lineTo(ex2, ey2);
+      targetCtx.closePath();
+      targetCtx.clip();
+
+      const delta = u0 * (v1 - v2) - v0 * (u1 - u2) + (u1 * v2 - u2 * v1);
+      if (Math.abs(delta) < 1e-5) {
+        targetCtx.restore();
+        return;
+      }
+
+      const deltaA = x0 * (v1 - v2) - v0 * (x1 - x2) + (x1 * v2 - x2 * v1);
+      const deltaB = u0 * (x1 - x2) - x0 * (u1 - u2) + (u1 * x2 - u2 * x1);
+      const deltaC = u0 * (v1 * x2 - v2 * x1) - v0 * (u1 * x2 - u2 * x1) + x0 * (u1 * v2 - u2 * v1);
+
+      const deltaD = y0 * (v1 - v2) - v0 * (y1 - y2) + (y1 * v2 - y2 * v1);
+      const deltaE = u0 * (y1 - y2) - y0 * (u1 - u2) + (u1 * y2 - u2 * y1);
+      const deltaF = u0 * (v1 * y2 - v2 * y1) - v0 * (u1 * y2 - u2 * y1) + y0 * (u1 * v2 - u2 * v1);
+
+      targetCtx.transform(
+        deltaA / delta,
+        deltaD / delta,
+        deltaB / delta,
+        deltaE / delta,
+        deltaC / delta,
+        deltaF / delta
+      );
+      targetCtx.drawImage(img, 0, 0);
+      targetCtx.restore();
+    }
+
+    function renderCanvas() {
+      ctx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+
+      if (state.step === 1 || state.step === 2 || state.isComparingOriginal) {
+        ctx.drawImage(photoCanvas, 0, 0);
+        if (state.step === 2) {
+          ctx.drawImage(pinkOverlayCanvas, 0, 0);
+        }
+        return;
+      }
+
+      const stride = GRID_COLS + 1;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const idx0 = r * stride + c;
+          const idx1 = idx0 + 1;
+          const idx2 = (r + 1) * stride + c;
+          const idx3 = idx2 + 1;
+
+          const v0 = vertices[idx0];
+          const v1 = vertices[idx1];
+          const v2 = vertices[idx2];
+          const v3 = vertices[idx3];
+
+          drawTexturedTriangle(
+            ctx, photoCanvas,
+            v0.x, v0.y, v1.x, v1.y, v2.x, v2.y,
+            v0.origX, v0.origY, v1.origX, v1.origY, v2.origX, v2.origY
+          );
+
+          drawTexturedTriangle(
+            ctx, photoCanvas,
+            v1.x, v1.y, v3.x, v3.y, v2.x, v2.y,
+            v1.origX, v1.origY, v3.origX, v3.origY, v2.origX, v2.origY
+          );
+        }
+      }
+
+      if (state.isPointerDown && state.step === 3 && !state.isRecording) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(state.pointerPos.x, state.pointerPos.y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = 'rgba(236, 72, 153, 0.85)';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // ==========================================
+    // 6. SPRING-MASS PHYSICS SIMULATION
+    // ==========================================
+    function updatePhysics() {
+      if (state.step !== 3) return;
+
+      let stiffness = 0.085;
+      let damping = 0.82;
+      if (state.elasticityLevel === 1) {
+        stiffness = 0.045;
+        damping = 0.88;
+      } else if (state.elasticityLevel === 3) {
+        stiffness = 0.14;
+        damping = 0.76;
+      }
+
+      for (let i = 0; i < vertices.length; i++) {
+        const v = vertices[i];
+        if (v.weight <= 0.002) {
+          v.x = v.origX;
+          v.y = v.origY;
+          continue;
+        }
+
+        if (state.isPointerDown && v.grabInfluence > 0) {
+          const dx = state.pointerPos.x - state.dragStartPos.x;
+          const dy = state.pointerPos.y - state.dragStartPos.y;
+
+          const effectivePull = v.grabInfluence * v.weight;
+          const targetX = v.grabStartX + dx * effectivePull * 1.18;
+          const targetY = v.grabStartY + dy * effectivePull * 1.18;
+
+          const nextX = v.x + (targetX - v.x) * 0.46;
+          const nextY = v.y + (targetY - v.y) * 0.46;
+          v.vx = (nextX - v.x) * 0.65;
+          v.vy = (nextY - v.y) * 0.65;
+          v.x = nextX;
+          v.y = nextY;
+        } else if (state.physicsMode === 'elastic') {
+          const forceX = (v.origX - v.x) * stiffness;
+          const forceY = (v.origY - v.y) * stiffness;
+
+          v.vx = (v.vx + forceX) * damping;
+          v.vy = (v.vy + forceY) * damping;
+
+          v.x += v.vx;
+          v.y += v.vy;
+        } else {
+          v.vx *= 0.7;
+          v.vy *= 0.7;
+          v.x += v.vx;
+          v.y += v.vy;
+        }
+      }
+    }
+
+    function animationLoop() {
+      updatePhysics();
+      renderCanvas();
+      requestAnimationFrame(animationLoop);
+    }
+
+    // ==========================================
+    // 7. POINTER & MULTI-TOUCH PINCH INTERACTIONS
+    // ==========================================
+    function getCanvasCoordinates(clientX, clientY) {
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = CANVAS_RES / rect.width;
+      const scaleY = CANVAS_RES / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    function getTouchDistance(t1, t2) {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.hypot(dx, dy);
+    }
+
+    function paintMaskStroke(fromX, fromY, toX, toY) {
+      maskCtx.save();
+      maskCtx.lineCap = 'round';
+      maskCtx.lineJoin = 'round';
+      maskCtx.lineWidth = state.brushSize;
+
+      if (state.brushTool === 'brush') {
+        maskCtx.globalCompositeOperation = 'source-over';
+        maskCtx.strokeStyle = '#ffffff';
+        maskCtx.fillStyle = '#ffffff';
+      } else {
+        maskCtx.globalCompositeOperation = 'destination-out';
+        maskCtx.strokeStyle = 'rgba(0,0,0,1)';
+        maskCtx.fillStyle = 'rgba(0,0,0,1)';
+      }
+
+      maskCtx.beginPath();
+      maskCtx.moveTo(fromX, fromY);
+      maskCtx.lineTo(toX, toY);
+      maskCtx.stroke();
+
+      maskCtx.beginPath();
+      maskCtx.arc(toX, toY, state.brushSize / 2, 0, Math.PI * 2);
+      maskCtx.fill();
+      maskCtx.restore();
+
+      updateMaskWeights();
+    }
+
+    function beginStretchGrab(x, y) {
+      state.dragStartPos = { x, y };
+      const radius = state.squishRadius;
+      const radiusSq = radius * radius;
+      let hitAnyMaskedArea = false;
+
+      for (let i = 0; i < vertices.length; i++) {
+        const v = vertices[i];
+        const dx = v.x - x;
+        const dy = v.y - y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < radiusSq && v.weight > 0.01) {
+          const dist = Math.sqrt(distSq);
+          const normDist = 1 - dist / radius;
+          v.grabInfluence = normDist * normDist * (3 - 2 * normDist);
+          v.grabStartX = v.x;
+          v.grabStartY = v.y;
+          hitAnyMaskedArea = true;
+        } else {
+          v.grabInfluence = 0;
+        }
+      }
+
+      if (hitAnyMaskedArea) {
+        playBoingSound('G3');
+        if (!state.hasInteractedInStep3) {
+          state.hasInteractedInStep3 = true;
+          canvasHintPill.style.opacity = '0';
+        }
+      } else {
+        showToast('분홍색으로 칠한 말랑 부위를 잡아당겨 보세요!');
+      }
+    }
+
+    function handlePointerDown(clientX, clientY) {
+      const pos = getCanvasCoordinates(clientX, clientY);
+      state.isPointerDown = true;
+      state.pointerPos = pos;
+      state.lastPointerPos = pos;
+
+      if (state.step === 2) {
+        saveMaskSnapshotForUndo();
+        paintMaskStroke(pos.x, pos.y, pos.x, pos.y);
+      } else if (state.step === 3) {
+        beginStretchGrab(pos.x, pos.y);
+      }
+    }
+
+    function handlePointerMove(clientX, clientY, isTouch = false) {
+      if (state.step === 2 && !isTouch) {
+        const rect = mainCanvas.getBoundingClientRect();
+        const displaySize = (state.brushSize / CANVAS_RES) * rect.width;
+        brushCursor.style.width = `${displaySize}px`;
+        brushCursor.style.height = `${displaySize}px`;
+        brushCursor.style.left = `${clientX}px`;
+        brushCursor.style.top = `${clientY}px`;
+        brushCursor.classList.remove('hidden');
+      }
+
+      if (!state.isPointerDown) return;
+      const pos = getCanvasCoordinates(clientX, clientY);
+      state.pointerPos = pos;
+
+      if (state.step === 1 && state.sourceMode === 'custom') {
+        state.imgOffsetX += pos.x - state.lastPointerPos.x;
+        state.imgOffsetY += pos.y - state.lastPointerPos.y;
+        renderCustomPhotoToBuffer();
+      } else if (state.step === 2) {
+        paintMaskStroke(state.lastPointerPos.x, state.lastPointerPos.y, pos.x, pos.y);
+      }
+      state.lastPointerPos = pos;
+    }
+
+    function handlePointerUp() {
+      if (state.isPointerDown && state.step === 3) {
+        playBoingSound('E4');
+      }
+      state.isPointerDown = false;
+      state.pinchStartDist = 0;
+      for (let i = 0; i < vertices.length; i++) {
+        vertices[i].grabInfluence = 0;
+      }
+    }
+
+    // Mouse Listeners
+    mainCanvas.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      handlePointerDown(e.clientX, e.clientY);
+    });
+    window.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY, false));
+    window.addEventListener('mouseup', () => handlePointerUp());
+    mainCanvas.addEventListener('mouseleave', () => brushCursor.classList.add('hidden'));
+
+    // Touch Listeners (with Two-Finger Pinch Zoom support in Step 1)
+    mainCanvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 2 && state.step === 1 && state.sourceMode === 'custom') {
+        state.pinchStartDist = getTouchDistance(e.touches[0], e.touches[1]);
+        state.pinchStartZoom = state.imgZoom;
+        state.isPointerDown = false;
+        return;
+      }
+      if (e.touches.length === 1) {
+        handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: false });
+
+    mainCanvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 2 && state.step === 1 && state.sourceMode === 'custom' && state.pinchStartDist > 0) {
+        const currentDist = getTouchDistance(e.touches[0], e.touches[1]);
+        const zoomFactor = currentDist / state.pinchStartDist;
+        const nextZoom = Math.min(2.8, Math.max(0.6, state.pinchStartZoom * zoomFactor));
+        state.imgZoom = nextZoom;
+        photoZoomSlider.value = String(nextZoom);
+        photoZoomValue.textContent = `${Math.round(nextZoom * 100)}%`;
+        renderCustomPhotoToBuffer();
+        return;
+      }
+      if (e.touches.length === 1) {
+        handlePointerMove(e.touches[0].clientX, e.touches[0].clientY, true);
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => {
+      brushCursor.classList.add('hidden');
+      handlePointerUp();
+    });
+
+    // PC Drag & Drop Support
+    const dropOverlay = document.getElementById('dropOverlay');
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropOverlay.classList.remove('hidden');
+    });
+    window.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget === null) {
+        dropOverlay.classList.add('hidden');
+      }
+    });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropOverlay.classList.add('hidden');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        loadImageFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    // Clipboard Paste (Ctrl+V / Cmd+V) Support for GitHub Pages Web
+    window.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.startsWith('image/')) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            e.preventDefault();
+            loadImageFile(blob);
+            break;
+          }
+        }
+      }
+    });
+
+    // ==========================================
+    // 8. STEP NAVIGATION & BUTTON EVENTS
+    // ==========================================
+    const stepTabs = document.querySelectorAll('.step-tab');
+    const controlsStep1 = document.getElementById('controlsStep1');
+    const controlsStep2 = document.getElementById('controlsStep2');
+    const controlsStep3 = document.getElementById('controlsStep3');
+    const instructionIcon = document.getElementById('instructionIcon');
+    const instructionText = document.getElementById('instructionText');
+    const canvasUploadOverlayGroup = document.getElementById('canvasUploadOverlayGroup');
+    const step3FloatingActions = document.getElementById('step3FloatingActions');
+
+    function goToStep(stepNum) {
+      state.step = stepNum;
+      brushCursor.classList.add('hidden');
+
+      stepTabs.forEach((tab) => {
+        const s = Number(tab.dataset.step);
+        if (s === stepNum) {
+          tab.className = 'step-tab flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 bg-pink-500 text-white shadow-sm';
+        } else {
+          tab.className = 'step-tab flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 text-slate-500 hover:text-pink-500';
+        }
+      });
+
+      controlsStep1.classList.toggle('hidden', stepNum !== 1);
+      controlsStep2.classList.toggle('hidden', stepNum !== 2);
+      controlsStep3.classList.toggle('hidden', stepNum !== 3);
+
+      canvasUploadOverlayGroup.classList.toggle('hidden', stepNum !== 1);
+      step3FloatingActions.classList.toggle('hidden', stepNum !== 3);
+
+      if (stepNum === 1) {
+        instructionIcon.textContent = '📸';
+        instructionText.textContent = state.sourceMode === 'custom'
+          ? '한 손가락으로 이동, 두 손가락으로 확대해 얼굴을 맞춰보세요!'
+          : '갤러리에서 사진을 고르거나 카메라로 찍어보세요!';
+        canvasHintPill.classList.add('hidden');
+      } else if (stepNum === 2) {
+        instructionIcon.textContent = '🖌️';
+        instructionText.textContent = '말랑하게 늘릴 볼, 코, 얼굴 부위를 손가락으로 칠해주세요!';
+        canvasHintPill.classList.add('hidden');
+        resetMeshDeformation(true);
+      } else if (stepNum === 3) {
+        instructionIcon.textContent = '👆';
+        instructionText.textContent = '칠한 부위를 손가락으로 잡고 쭉~ 당겨보세요!';
+        if (!state.hasInteractedInStep3) {
+          canvasHintPill.classList.remove('hidden');
+          canvasHintPill.style.opacity = '1';
+        }
+      }
+    }
+
+    stepTabs.forEach((tab) => {
+      tab.addEventListener('click', () => goToStep(Number(tab.dataset.step)));
+    });
+
+    // File Input Change Listeners (Gallery & Camera)
+    function handleFileInputChange(e) {
+      const input = e.target;
+      if (input.files && input.files[0]) {
+        const selectedFile = input.files[0];
+        loadImageFile(selectedFile);
+        // Reset value after reading so the same photo can be re-selected if desired
+        input.value = '';
+      }
+    }
+    galleryFileInput.addEventListener('change', handleFileInputChange);
+    cameraFileInput.addEventListener('change', handleFileInputChange);
+
+    // Step 1: Zoom & Pan Framing Sliders
+    const photoZoomSlider = document.getElementById('photoZoomSlider');
+    const photoZoomValue = document.getElementById('photoZoomValue');
+    photoZoomSlider.addEventListener('input', (e) => {
+      state.imgZoom = Number(e.target.value);
+      photoZoomValue.textContent = `${Math.round(state.imgZoom * 100)}%`;
+      renderCustomPhotoToBuffer();
+    });
+
+    document.getElementById('resetCropBtn').addEventListener('click', () => {
+      state.imgZoom = 1;
+      state.imgOffsetX = 0;
+      state.imgOffsetY = 0;
+      photoZoomSlider.value = '1';
+      photoZoomValue.textContent = '100%';
+      renderCustomPhotoToBuffer();
+      showToast('사진 크기와 위치를 기본으로 맞췄어요.');
+    });
+
+    // Step 1: Sample Selection
+    const sampleButtons = document.querySelectorAll('.sample-btn');
+    sampleButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.sample;
+        state.sourceMode = 'sample';
+        state.currentSample = key;
+        document.getElementById('photoAdjustBox').classList.add('hidden');
+
+        sampleButtons.forEach((b) => {
+          b.classList.remove('border-pink-400', 'bg-pink-50/60');
+          b.classList.add('border-slate-100', 'bg-slate-50');
+        });
+        btn.classList.remove('border-slate-100', 'bg-slate-50');
+        btn.classList.add('border-pink-400', 'bg-pink-50/60');
+
+        drawSampleCharacter(key);
+        applyDefaultCheekMask();
+        resetMeshDeformation(true);
+        showToast('귀여운 샘플 친구를 불러왔어요!');
+      });
+    });
+
+    // Instant Play All
+    document.getElementById('instantPlayAllBtn').addEventListener('click', () => {
+      maskCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+      maskCtx.fillStyle = '#ffffff';
+      maskCtx.beginPath();
+      maskCtx.arc(CANVAS_RES / 2, CANVAS_RES / 2, CANVAS_RES * 0.36, 0, Math.PI * 2);
+      maskCtx.fill();
+      updateMaskWeights();
+      goToStep(3);
+      showToast('얼굴 전체가 말랑해졌어요! 바로 당겨보세요!');
+    });
+
+    // Step 2: Brush, Eraser, Undo, Fill All, Clear
+    const brushToolBtn = document.getElementById('brushToolBtn');
+    const eraserToolBtn = document.getElementById('eraserToolBtn');
+    const brushSizeSlider = document.getElementById('brushSizeSlider');
+    const brushSizeValue = document.getElementById('brushSizeValue');
+
+    brushToolBtn.addEventListener('click', () => {
+      state.brushTool = 'brush';
+      brushToolBtn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500 text-white text-xs font-bold shadow-2xs transition';
+      eraserToolBtn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 text-xs font-bold hover:bg-white/60 transition';
+    });
+
+    eraserToolBtn.addEventListener('click', () => {
+      state.brushTool = 'eraser';
+      eraserToolBtn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500 text-white text-xs font-bold shadow-2xs transition';
+      brushToolBtn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 text-xs font-bold hover:bg-white/60 transition';
+    });
+
+    brushSizeSlider.addEventListener('input', (e) => {
+      state.brushSize = Number(e.target.value);
+      brushSizeValue.textContent = state.brushSize;
+    });
+
+    document.getElementById('undoMaskBtn').addEventListener('click', undoMaskStroke);
+
+    document.getElementById('fillAllMaskBtn').addEventListener('click', () => {
+      saveMaskSnapshotForUndo();
+      maskCtx.save();
+      maskCtx.globalCompositeOperation = 'source-over';
+      maskCtx.fillStyle = '#ffffff';
+      maskCtx.beginPath();
+      maskCtx.roundRect(24, 24, CANVAS_RES - 48, CANVAS_RES - 48, 40);
+      maskCtx.fill();
+      maskCtx.restore();
+      updateMaskWeights();
+      showToast('사진 전체 영역을 칠했어요!');
+    });
+
+    document.getElementById('clearMaskBtn').addEventListener('click', () => {
+      saveMaskSnapshotForUndo();
+      maskCtx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+      updateMaskWeights();
+      showToast('칠한 영역을 모두 지웠어요.');
+    });
+
+    // Step 3: Physics Mode, Sliders, Compare Original, Reset
+    const modeElasticBtn = document.getElementById('modeElasticBtn');
+    const modeHoldBtn = document.getElementById('modeHoldBtn');
+
+    modeElasticBtn.addEventListener('click', () => {
+      state.physicsMode = 'elastic';
+      modeElasticBtn.className = 'py-1.5 px-2 rounded-xl bg-white text-pink-600 font-bold text-xs shadow-2xs transition flex items-center justify-center gap-1';
+      modeHoldBtn.className = 'py-1.5 px-2 rounded-xl text-slate-500 font-bold text-xs hover:text-slate-700 transition flex items-center justify-center gap-1';
+      showToast('말랑 탄성 모드: 손을 떼면 출렁이며 돌아옵니다!');
+    });
+
+    modeHoldBtn.addEventListener('click', () => {
+      state.physicsMode = 'hold';
+      modeHoldBtn.className = 'py-1.5 px-2 rounded-xl bg-white text-pink-600 font-bold text-xs shadow-2xs transition flex items-center justify-center gap-1';
+      modeElasticBtn.className = 'py-1.5 px-2 rounded-xl text-slate-500 font-bold text-xs hover:text-slate-700 transition flex items-center justify-center gap-1';
+      showToast('모양 고정 모드: 늘린 모양이 그대로 유지돼요!');
+    });
+
+    document.getElementById('squishRadiusSlider').addEventListener('input', (e) => {
+      state.squishRadius = Number(e.target.value);
+      document.getElementById('squishRadiusValue').textContent = state.squishRadius;
+    });
+
+    const elasticityLabels = { 1: '쫀득', 2: '보통', 3: '탱탱' };
+    document.getElementById('elasticitySlider').addEventListener('input', (e) => {
+      state.elasticityLevel = Number(e.target.value);
+      document.getElementById('elasticityValue').textContent = elasticityLabels[state.elasticityLevel];
+    });
+
+    // Compare Original
+    const compareOriginalBtn = document.getElementById('compareOriginalBtn');
+    compareOriginalBtn.addEventListener('mousedown', () => { state.isComparingOriginal = true; });
+    compareOriginalBtn.addEventListener('touchstart', (e) => { e.preventDefault(); state.isComparingOriginal = true; }, { passive: false });
+    window.addEventListener('mouseup', () => { state.isComparingOriginal = false; });
+    window.addEventListener('touchend', () => { state.isComparingOriginal = false; });
+
+    document.getElementById('quickResetBtn').addEventListener('click', () => {
+      resetMeshDeformation(false);
+      playBoingSound('C5');
+      showToast('원래 모양으로 되돌렸어요!');
+    });
+
+    // Sound Toggle
+    const soundIcon = document.getElementById('soundIcon');
+    document.getElementById('soundToggleBtn').addEventListener('click', () => {
+      state.soundEnabled = !state.soundEnabled;
+      soundIcon.textContent = state.soundEnabled ? '🔊' : '🔇';
+      if (state.soundEnabled) {
+        playBoingSound('C4');
+        showToast('말랑 효과음이 켜졌어요!');
+      } else {
+        showToast('효과음이 꺼졌어요.');
+      }
+    });
+
+    // ==========================================
+    // 9. MOBILE-FRIENDLY IMAGE SAVE & SHARE
+    // ==========================================
+    let latestSavedDataUrl = '';
+    const mobileSaveModal = document.getElementById('mobileSaveModal');
+    const savedPreviewImg = document.getElementById('savedPreviewImg');
+
+    document.getElementById('saveImageBtn').addEventListener('click', async () => {
+      try {
+        const wasDown = state.isPointerDown;
+        state.isPointerDown = false;
+        renderCanvas();
+        latestSavedDataUrl = mainCanvas.toDataURL('image/png');
+        state.isPointerDown = wasDown;
+
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        if (isMobile) {
+          // 모바일 브라우저/인앱 웹뷰에서는 미리보기 모달(꾹 눌러 저장 + Web Share API) 제공
+          savedPreviewImg.src = latestSavedDataUrl;
+          mobileSaveModal.classList.remove('hidden');
+        } else {
+          const link = document.createElement('a');
+          link.download = `squishy-photo-${Date.now()}.png`;
+          link.href = latestSavedDataUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          showToast('사진이 PNG로 저장되었어요! 📸');
+        }
+      } catch (err) {
+        showToast('사진 저장 중 오류가 발생했어요.');
+      }
+    });
+
+    document.getElementById('nativeShareBtn').addEventListener('click', async () => {
+      if (!latestSavedDataUrl) return;
+      try {
+        const res = await fetch(latestSavedDataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `squishy-${Date.now()}.png`, { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: '말랑이 사진 늘리기',
+            text: '내가 만든 말랑말랑 사진!'
+          });
+        } else {
+          const link = document.createElement('a');
+          link.download = `squishy-photo-${Date.now()}.png`;
+          link.href = latestSavedDataUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          showToast('다운로드를 시도했어요! 안 되면 위 이미지를 꾹 눌러 저장해 주세요.');
+        }
+      } catch (e) {
+        showToast('위 이미지를 길게 꾹 눌러 사진첩에 저장해 주세요!');
+      }
+    });
+
+    function closeSaveModal() {
+      mobileSaveModal.classList.add('hidden');
+    }
+    document.getElementById('closeSaveModalBtn').addEventListener('click', closeSaveModal);
+    document.getElementById('closeSaveModalFooterBtn').addEventListener('click', closeSaveModal);
+
+    // ==========================================
+    // 10. SHORT VIDEO RECORDING (WebM)
+    // ==========================================
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordingInterval = null;
+
+    const recordVideoBtn = document.getElementById('recordVideoBtn');
+    const recordBtnIcon = document.getElementById('recordBtnIcon');
+    const recordBtnText = document.getElementById('recordBtnText');
+    const recordingBadge = document.getElementById('recordingBadge');
+    const recordingTimer = document.getElementById('recordingTimer');
+
+    recordVideoBtn.addEventListener('click', () => {
+      if (state.isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+
+    function startRecording() {
+      if (!mainCanvas.captureStream || typeof MediaRecorder === 'undefined') {
+        showToast('현재 모바일 브라우저에서는 영상 녹화 대신 사진 저장을 이용해 주세요!');
+        return;
+      }
+      try {
+        recordedChunks = [];
+        const stream = mainCanvas.captureStream(30);
+        let options = {};
+        if (MediaRecorder.isTypeSupported('video/mp4')) {
+          options = { mimeType: 'video/mp4' };
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+          options = { mimeType: 'video/webm;codecs=vp9' };
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+          options = { mimeType: 'video/webm' };
+        }
+
+        mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          const mime = mediaRecorder.mimeType || 'video/webm';
+          const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+          const blob = new Blob(recordedChunks, { type: mime });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `squishy-loop-${Date.now()}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          showToast('말랑 영상이 저장되었어요! 🎥');
+        };
+
+        mediaRecorder.start();
+        state.isRecording = true;
+        recordBtnIcon.textContent = '⏹️';
+        recordBtnText.textContent = '녹화 완료';
+        recordingBadge.classList.remove('hidden');
+
+        let sec = 0;
+        recordingTimer.textContent = '녹화 중 00:00';
+        recordingInterval = setInterval(() => {
+          sec++;
+          const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+          const ss = String(sec % 60).padStart(2, '0');
+          recordingTimer.textContent = `녹화 중 ${mm}:${ss}`;
+          if (sec >= 15) stopRecording();
+        }, 1000);
+
+        showToast('녹화 시작! 지금 사진을 마구 늘려보세요!');
+      } catch (err) {
+        showToast('현재 브라우저에서는 영상 녹화가 제한되어 있어요.');
+      }
+    }
+
+    function stopRecording() {
+      if (!state.isRecording) return;
+      state.isRecording = false;
+      clearInterval(recordingInterval);
+      recordBtnIcon.textContent = '🎥';
+      recordBtnText.textContent = '움짤 녹화';
+      recordingBadge.classList.add('hidden');
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    }
+
+    // Toast Helper
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toastMsg');
+      toast.textContent = msg;
+      toast.style.opacity = '1';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+      }, 2500);
+    }
+
+    // ==========================================
+    // 11. INITIALIZATION ON LOAD
+    // ==========================================
+    function updateEnvironmentBadge() {
+      const envBadge = document.getElementById('envBadge');
+      if (!envBadge) return;
+      const host = window.location.hostname || '';
+      if (host.endsWith('github.io')) {
+        envBadge.textContent = '🚀 GitHub Pages 호스팅 중';
+      } else if (window.location.protocol === 'https:') {
+        envBadge.textContent = '🔒 HTTPS 웹 환경 준비 완료';
+      } else {
+        envBadge.textContent = '💻 로컬 미리보기 모드';
+      }
+    }
+
+    window.addEventListener('load', () => {
+      mainCanvas.width = CANVAS_RES;
+      mainCanvas.height = CANVAS_RES;
+
+      updateEnvironmentBadge();
+      initMesh();
+      drawSampleCharacter('maltese');
+      applyDefaultCheekMask();
+      goToStep(1);
+      animationLoop();
+    });
+  </script>
+</body>
+</html>
